@@ -853,7 +853,7 @@ impl RustAlphaBetaEngine {
         root_moves.sort_unstable_by(|left, right| right.score.cmp(&left.score));
 
         if !self.should_parallelize_root(depth, root_moves.len()) {
-            let score = self.negamax(board, depth, alpha, beta, 0, repetition, 2)?;
+            let score = self.negamax(board, depth, alpha, beta, 0, repetition)?;
             let tt_idx2 = board_hash(board) as usize & TT_MASK;
             let best_move = {
                 let entry = &self.tt[tt_idx2];
@@ -884,7 +884,7 @@ impl RustAlphaBetaEngine {
         let first_hash = board_hash(&first_child);
         repetition.push(first_hash);
         let mut best_score =
-            -self.negamax(&first_child, depth - 1, -beta, -alpha, 1, repetition, 2)?;
+            -self.negamax(&first_child, depth - 1, -beta, -alpha, 1, repetition)?;
         repetition.pop(first_hash);
         let mut best_move = first_move;
         let current_alpha = alpha.max(best_score);
@@ -974,7 +974,6 @@ impl RustAlphaBetaEngine {
                 -local_alpha,
                 1,
                 &mut local_repetition,
-                2,
             )?;
             if score > local_alpha {
                 score = -self.negamax(
@@ -984,7 +983,6 @@ impl RustAlphaBetaEngine {
                     -local_alpha,
                     1,
                     &mut local_repetition,
-                    2,
                 )?;
             }
 
@@ -1080,7 +1078,6 @@ impl RustAlphaBetaEngine {
         mut beta: i32,
         ply: usize,
         repetition: &mut RepetitionTracker,
-        double_ext: i32,
     ) -> Option<i32> {
         if self.should_stop() {
             return None;
@@ -1204,7 +1201,6 @@ impl RustAlphaBetaEngine {
                     -beta + 1,
                     ply + 1,
                     repetition,
-                    double_ext,
                 );
                 repetition.pop(null_hash);
                 let score = -search?;
@@ -1239,7 +1235,6 @@ impl RustAlphaBetaEngine {
                     -probcut_beta + 1,
                     ply + 1,
                     repetition,
-                    double_ext,
                 );
                 repetition.pop(child_hash);
                 let score = -search?;
@@ -1327,11 +1322,7 @@ impl RustAlphaBetaEngine {
                 );
                 if let Some(se_score) = excluded_score {
                     if se_score < se_beta {
-                        if se_score < se_beta - effective_depth && double_ext > 0 {
-                            extension = 2; // double extension: TT move extremely dominant
-                        } else {
-                            extension = 1; // TT move is singular, extend it
-                        }
+                        extension = 1; // TT move is singular, extend it
                     }
                 }
             }
@@ -1343,7 +1334,6 @@ impl RustAlphaBetaEngine {
             repetition.push(child_hash);
 
             let score = (|| -> Option<i32> {
-                let next_double_ext = if extension == 2 { double_ext - 1 } else { double_ext };
                 if move_count == 1 {
                     return Some(-self.negamax(
                         &child,
@@ -1352,7 +1342,6 @@ impl RustAlphaBetaEngine {
                         -alpha,
                         ply + 1,
                         repetition,
-                        next_double_ext,
                     )?);
                 }
 
@@ -1399,7 +1388,6 @@ impl RustAlphaBetaEngine {
                     -alpha,
                     ply + 1,
                     repetition,
-                    double_ext,
                 )?;
                 if score > alpha && search_depth != effective_depth - 1 {
                     score = -self.negamax(
@@ -1409,7 +1397,6 @@ impl RustAlphaBetaEngine {
                         -alpha,
                         ply + 1,
                         repetition,
-                        double_ext,
                     )?;
                 }
                 if score > alpha && score < beta {
@@ -1420,7 +1407,6 @@ impl RustAlphaBetaEngine {
                         -alpha,
                         ply + 1,
                         repetition,
-                        double_ext,
                     )?;
                 }
                 Some(score)
@@ -1577,7 +1563,7 @@ impl RustAlphaBetaEngine {
             let child = board.make_move_new(chess_move);
             let child_hash = board_hash(&child);
             repetition.push(child_hash);
-            let score = -self.negamax(&child, depth - 1, -beta, -alpha, ply + 1, repetition, 0)?;
+            let score = -self.negamax(&child, depth - 1, -beta, -alpha, ply + 1, repetition)?;
             repetition.pop(child_hash);
 
             if score > best_score {
