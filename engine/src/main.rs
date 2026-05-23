@@ -1306,6 +1306,14 @@ impl RustAlphaBetaEngine {
                 {
                     continue;
                 }
+                // Extended history pruning at depth 4 when position is not improving
+                if effective_depth == 4
+                    && move_count > 5
+                    && !improving
+                    && self.history_heuristic[move_key(chess_move) as usize] < -3000 * effective_depth
+                {
+                    continue;
+                }
                 searched_quiets.push(chess_move);
             }
             if let Some(victim) = capture_victim {
