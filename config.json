@@ -60,7 +60,7 @@
     },
     "config_name": "config.json",
     "output": 0,
-    "seed": 15921532983352009212,
+    "seed": 10223029051868199284,
     "variant": 0,
     "type": 1,
     "gauntlet_seeds": 1,
@@ -384,10 +384,10 @@
             "penta_LL": 0
         },
         "HiveChess vs SF_2900": {
-            "wins": 4,
+            "wins": 2,
             "losses": 0,
             "draws": 0,
-            "penta_WW": 2,
+            "penta_WW": 1,
             "penta_WD": 0,
             "penta_WL": 0,
             "penta_DD": 0,
@@ -406,11 +406,11 @@
             "penta_LL": 0
         },
         "HiveChess vs SF_2800": {
-            "wins": 3,
+            "wins": 4,
             "losses": 0,
-            "draws": 1,
-            "penta_WW": 1,
-            "penta_WD": 1,
+            "draws": 0,
+            "penta_WW": 2,
+            "penta_WD": 0,
             "penta_WL": 0,
             "penta_DD": 0,
             "penta_LD": 0,
@@ -450,10 +450,10 @@
             "penta_LL": 0
         },
         "HiveChess vs SF_2600": {
-            "wins": 6,
+            "wins": 4,
             "losses": 0,
             "draws": 0,
-            "penta_WW": 3,
+            "penta_WW": 2,
             "penta_WD": 0,
             "penta_WL": 0,
             "penta_DD": 0,

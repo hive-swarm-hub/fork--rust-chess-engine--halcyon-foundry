@@ -1192,6 +1192,7 @@ impl RustAlphaBetaEngine {
                 let reduction = 2 + effective_depth / 3;
                 self.ensure_ply_capacity(ply + 2);
                 self.move_stack[ply] = None; // null move: no cont_hist propagation
+                self.piece_stack[ply] = None;
                 let null_hash = board_hash(&null_board);
                 repetition.push(null_hash);
                 let search = self.negamax(
