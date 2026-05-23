@@ -1192,7 +1192,6 @@ impl RustAlphaBetaEngine {
                 let reduction = 2 + effective_depth / 3;
                 self.ensure_ply_capacity(ply + 2);
                 self.move_stack[ply] = None; // null move: no cont_hist propagation
-                self.piece_stack[ply] = None;
                 let null_hash = board_hash(&null_board);
                 repetition.push(null_hash);
                 let search = self.negamax(
@@ -1297,6 +1296,13 @@ impl RustAlphaBetaEngine {
                 if effective_depth <= 4
                     && move_count > 3
                     && static_exchange_eval(board, chess_move) < -50 * effective_depth
+                {
+                    continue;
+                }
+                // History pruning: skip moves with consistently bad history at low depth
+                if effective_depth <= 2
+                    && move_count > 3
+                    && self.history_heuristic[move_key(chess_move) as usize] < -3000 * effective_depth
                 {
                     continue;
                 }
