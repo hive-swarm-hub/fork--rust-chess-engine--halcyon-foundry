@@ -1322,12 +1322,7 @@ impl RustAlphaBetaEngine {
                 );
                 if let Some(se_score) = excluded_score {
                     if se_score < se_beta {
-                        // Double extension when TT move is extremely dominant
-                        extension = if se_score < se_beta - effective_depth && ply < 2 * effective_depth as usize {
-                            2
-                        } else {
-                            1
-                        };
+                        extension = 1; // TT move is singular, extend it
                     }
                 }
             }
