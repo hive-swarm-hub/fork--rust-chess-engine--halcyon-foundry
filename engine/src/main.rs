@@ -1124,6 +1124,7 @@ impl RustAlphaBetaEngine {
 
         let alpha_original = alpha;
         let beta_original = beta;
+        let is_pv = beta_original - alpha_original > 1;
         let tt_key = board_hash(board);
         let tt_idx = tt_key as usize & TT_MASK;
         let tt_entry = {
@@ -1323,6 +1324,9 @@ impl RustAlphaBetaEngine {
                 if let Some(se_score) = excluded_score {
                     if se_score < se_beta {
                         extension = 1; // TT move is singular, extend it
+                        if is_pv && se_score < se_beta - 20 {
+                            extension = 2; // double extension on PV nodes with large singularity gap
+                        }
                     }
                 }
             }
