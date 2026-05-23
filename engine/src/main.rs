@@ -1302,7 +1302,7 @@ impl RustAlphaBetaEngine {
                 // History pruning: skip moves with consistently bad history at low depth
                 if effective_depth <= 3
                     && move_count > 3
-                    && self.history_heuristic[move_key(chess_move) as usize] < -3000 * effective_depth
+                    && self.history_heuristic[move_key(chess_move) as usize] < -2000 * effective_depth
                 {
                     continue;
                 }
