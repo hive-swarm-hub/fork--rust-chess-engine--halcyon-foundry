@@ -252,6 +252,8 @@ const PAWN_CACHE_MASK: usize = PAWN_CACHE_SIZE - 1;
 const HISTORY_LIMIT: i32 = 32_000;
 const CAPTURE_HISTORY_PIECES: usize = 6;
 const CAPTURE_HISTORY_LIMIT: i32 = 16_000;
+const CONT_HIST_DIM: usize = 6 * 64; // 6 piece types * 64 squares
+const CONT_HIST_LIMIT: i32 = 16_384;
 const MAX_TIME_SEARCH_DEPTH: i32 = 64;
 const PHASE_TOTAL: i32 = 24;
 const SEE_PRUNE_MARGIN: i32 = 80;
@@ -622,6 +624,7 @@ struct RustAlphaBetaEngine {
     history_heuristic: Vec<i32>,
     capture_history: Vec<i16>,
     countermove: Vec<Option<ChessMove>>, // indexed by previous move's move_key
+    cont_hist: Vec<i16>,                 // continuation history [prev_piece_sq * CONT_HIST_DIM + curr_piece_sq]
     move_stack: Vec<Option<ChessMove>>,  // move played at each ply for countermove tracking
     eval_stack: Vec<i32>,                // static eval at each ply for improving detection
     eval_cache: Vec<EvalCacheEntry>,
@@ -642,6 +645,7 @@ impl RustAlphaBetaEngine {
             history_heuristic: vec![0; HISTORY_SIZE],
             capture_history: vec![0; HISTORY_SIZE * CAPTURE_HISTORY_PIECES],
             countermove: vec![None; HISTORY_SIZE],
+            cont_hist: vec![0i16; CONT_HIST_DIM * CONT_HIST_DIM],
             move_stack: vec![None; KILLER_PLY_CAPACITY],
             eval_stack: vec![0; KILLER_PLY_CAPACITY],
             eval_cache: vec![EvalCacheEntry::default(); EVAL_CACHE_SIZE],
@@ -1014,6 +1018,7 @@ impl RustAlphaBetaEngine {
             history_heuristic: self.history_heuristic.clone(),
             capture_history: self.capture_history.clone(),
             countermove: self.countermove.clone(),
+            cont_hist: self.cont_hist.clone(),
             move_stack: self.move_stack.clone(),
             eval_stack: self.eval_stack.clone(),
             eval_cache: self.eval_cache.clone(),
@@ -1185,6 +1190,8 @@ impl RustAlphaBetaEngine {
         {
             if let Some(null_board) = board.null_move() {
                 let reduction = 2 + effective_depth / 3;
+                self.ensure_ply_capacity(ply + 2);
+                self.move_stack[ply] = None; // null move: no cont_hist propagation
                 let null_hash = board_hash(&null_board);
                 repetition.push(null_hash);
                 let search = self.negamax(
@@ -1364,6 +1371,13 @@ impl RustAlphaBetaEngine {
                     } else if hist > 8000 {
                         reduction = (reduction - 1).max(0);
                     }
+                    // Adjust based on continuation history
+                    let ch = self.cont_hist_score(board, chess_move, ply);
+                    if ch < -5000 {
+                        reduction += 1;
+                    } else if ch > 5000 {
+                        reduction = (reduction - 1).max(0);
+                    }
                     search_depth = (search_depth - reduction).max(0);
                 }
 
@@ -1412,6 +1426,7 @@ impl RustAlphaBetaEngine {
                 if is_quiet {
                     self.record_killer(chess_move, ply);
                     self.update_history(chess_move, bonus);
+                    self.update_cont_hist(board, chess_move, ply, bonus);
                     // Record countermove: this move refutes the previous move
                     if ply > 0 {
                         if let Some(prev_move) = self.move_stack[ply - 1] {
@@ -1421,6 +1436,7 @@ impl RustAlphaBetaEngine {
                     for previous in searched_quiets.iter().copied() {
                         if previous != chess_move {
                             self.update_history(previous, -bonus);
+                            self.update_cont_hist(board, previous, ply, -bonus);
                         }
                     }
                 } else if let Some(victim) = capture_victim {
@@ -1877,6 +1893,11 @@ impl RustAlphaBetaEngine {
             score += 10_000;
         }
 
+        // Continuation history bonus for quiet moves
+        if is_quiet {
+            score += self.cont_hist_score(board, chess_move, ply);
+        }
+
         score
     }
 
@@ -1904,6 +1925,60 @@ impl RustAlphaBetaEngine {
         let clamped = bonus.clamp(-CAPTURE_HISTORY_LIMIT, CAPTURE_HISTORY_LIMIT);
         let updated = h + clamped - h * clamped.abs() / CAPTURE_HISTORY_LIMIT;
         *history = updated.clamp(-CAPTURE_HISTORY_LIMIT, CAPTURE_HISTORY_LIMIT) as i16;
+    }
+
+    fn cont_hist_key(piece: Piece, sq: Square) -> usize {
+        let piece_idx = match piece {
+            Piece::Pawn => 0,
+            Piece::Knight => 1,
+            Piece::Bishop => 2,
+            Piece::Rook => 3,
+            Piece::Queen => 4,
+            Piece::King => 5,
+        };
+        piece_idx * 64 + sq.to_index()
+    }
+
+    fn cont_hist_score(&self, board: &Board, chess_move: ChessMove, ply: usize) -> i32 {
+        if ply == 0 { return 0; }
+        let prev_move = match self.move_stack.get(ply - 1).copied().flatten() {
+            Some(m) => m,
+            None => return 0,
+        };
+        let prev_piece = match board.piece_on(prev_move.get_dest()) {
+            Some(p) => p,
+            None => return 0,
+        };
+        let curr_piece = match board.piece_on(chess_move.get_source()) {
+            Some(p) => p,
+            None => return 0,
+        };
+        let pk = Self::cont_hist_key(prev_piece, prev_move.get_dest());
+        let ck = Self::cont_hist_key(curr_piece, chess_move.get_dest());
+        self.cont_hist[pk * CONT_HIST_DIM + ck] as i32
+    }
+
+    fn update_cont_hist(&mut self, board: &Board, chess_move: ChessMove, ply: usize, bonus: i32) {
+        if ply == 0 { return; }
+        let prev_move = match self.move_stack.get(ply - 1).copied().flatten() {
+            Some(m) => m,
+            None => return,
+        };
+        let prev_piece = match board.piece_on(prev_move.get_dest()) {
+            Some(p) => p,
+            None => return,
+        };
+        let curr_piece = match board.piece_on(chess_move.get_source()) {
+            Some(p) => p,
+            None => return,
+        };
+        let pk = Self::cont_hist_key(prev_piece, prev_move.get_dest());
+        let ck = Self::cont_hist_key(curr_piece, chess_move.get_dest());
+        let entry = &mut self.cont_hist[pk * CONT_HIST_DIM + ck];
+        let h = *entry as i32;
+        let clamped = bonus.clamp(-CONT_HIST_LIMIT, CONT_HIST_LIMIT);
+        let updated = h + clamped - h * clamped.abs() / CONT_HIST_LIMIT;
+        *entry = updated.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
     }
 
     fn ensure_ply_capacity(&mut self, size: usize) {
