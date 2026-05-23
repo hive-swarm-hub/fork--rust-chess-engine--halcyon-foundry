@@ -1247,7 +1247,7 @@ impl RustAlphaBetaEngine {
         // Singular extension: if TT move is much better than alternatives, extend it
         let mut singular_move: Option<ChessMove> = None;
         if let (Some(entry), Some(tt_mv)) = (tt_entry, tt_move) {
-            if effective_depth >= 6
+            if effective_depth >= 8
                 && entry.depth >= effective_depth - 3
                 && entry.flag != UPPER_BOUND
                 && entry.score.abs() < MATE_SCORE - 512
